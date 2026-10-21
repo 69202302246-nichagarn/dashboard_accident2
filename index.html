@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเฝ้าระวังและสารสนเทศระบาดวิทยาการเสียชีวิตจากอุบัติเหตุทางถนน</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#090d16',
+                        panelbg: '#111827',
+                        cardbg: '#1f2937',
+                        bordercolor: '#374151',
+                        accentred: '#ef4444',
+                        accentamber: '#f59e0b',
+                        accentcyan: '#06b6d4',
+                        accentemerald: '#10b981',
+                        accentpurple: '#8b5cf6'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Sarabun', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet Marker Cluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    
+    <!-- PapaParse for CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <style>
+        body {
+            background-color: #090d16;
+            color: #e5e7eb;
+            font-family: 'Sarabun', 'Inter', sans-serif;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(55, 65, 81, 0.5);
+        }
+        #map { height: 500px; border-radius: 0.75rem; z-index: 10; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-accentred selection:text-white">
+
+    <!-- Top Header Bar -->
+    <header class="sticky top-0 z-50 glass-panel border-b border-gray-800 px-4 py-3 shadow-xl">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-red-950/60 border border-red-500/30 rounded-xl text-red-500 flex items-center justify-center">
+                    <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg md:text-xl font-bold text-white tracking-wide">
+                        ระบบเฝ้าระวังและสารสนเทศระบาดวิทยาการเสียชีวิตจากอุบัติเหตุทางถนน
+                    </h1>
+                    <p class="text-xs text-gray-400 flex items-center gap-2">
+                        <span><i class="fa-solid fa-database text-accentcyan mr-1"></i> Google Sheets Live Pipeline</span>
+                    </p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2.5">
+                <button onclick="fetchLiveData()" class="bg-accentcyan/20 hover:bg-accentcyan/30 text-accentcyan border border-accentcyan/40 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate" id="refreshIcon"></i>
+                    <span>โหลดข้อมูลล่าสุด</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-6 space-y-6 w-full flex-1">
+        
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="glass-panel p-4 rounded-xl text-center">
+                <h3 class="text-gray-400 text-sm">ผู้เสียชีวิตทั้งหมด (ราย)</h3>
+                <p class="text-3xl font-bold text-red-400 mt-2" id="stat-total">0</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl text-center">
+                <h3 class="text-gray-400 text-sm">เพศชาย (ราย)</h3>
+                <p class="text-3xl font-bold text-blue-400 mt-2" id="stat-male">0</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl text-center">
+                <h3 class="text-gray-400 text-sm">เพศหญิง (ราย)</h3>
+                <p class="text-3xl font-bold text-pink-400 mt-2" id="stat-female">0</p>
+            </div>
+            <div class="glass-panel p-4 rounded-xl text-center">
+                <h3 class="text-gray-400 text-sm">อัปเดตข้อมูลล่าสุด</h3>
+                <p class="text-lg font-medium text-emerald-400 mt-3" id="stat-time">-</p>
+            </div>
+        </div>
+
+        <!-- Map Section -->
+        <div class="glass-panel p-4 rounded-xl shadow-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-200"><i class="fa-solid fa-map-location-dot text-accentcyan mr-2"></i> แผนที่จุดเกิดเหตุ</h2>
+                <span id="map-status" class="text-xs text-emerald-400">กำลังรอข้อมูล...</span>
+            </div>
+            <div id="map" class="border border-gray-700"></div>
+        </div>
+        
+    </main>
+
+    <script>
+        // กำหนด ID ของ Google Sheet
+        const SHEET_ID = '1SxxfLHCm9w_5y0SXc2p2eAmS2TP4wRFwWO0xOuLYf7E';
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
+
+        // ตัวแปรแผนที่
+        let map;
+        let markers;
+
+        // เริ่มต้นแผนที่
+        function initMap() {
+            map = L.map('map').setView([13.7563, 100.5018], 6); // จุดศูนย์กลางประเทศไทย
+            
+            // ใช้แผนที่ Dark mode
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+            }).addTo(map);
+
+            markers = L.markerClusterGroup({
+                chunkedLoading: true
+            });
+            map.addLayer(markers);
+        }
+
+        // ฟังก์ชันดึงข้อมูลจาก Google Sheet
+        function fetchLiveData() {
+            const icon = document.getElementById('refreshIcon');
+            const mapStatus = document.getElementById('map-status');
+            
+            icon.classList.add('fa-spin');
+            mapStatus.innerText = 'กำลังโหลดข้อมูล...';
+            mapStatus.className = 'text-xs text-amber-400';
+
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processData(results.data);
+                    
+                    icon.classList.remove('fa-spin');
+                    mapStatus.innerText = `โหลดข้อมูลสำเร็จ (${results.data.length} รายการ)`;
+                    mapStatus.className = 'text-xs text-emerald-400';
+                    
+                    const now = new Date();
+                    document.getElementById('stat-time').innerText = now.toLocaleTimeString('th-TH');
+                },
+                error: function(err) {
+                    console.error('Error fetching data:', err);
+                    icon.classList.remove('fa-spin');
+                    mapStatus.innerText = 'เกิดข้อผิดพลาดในการโหลดข้อมูล';
+                    mapStatus.className = 'text-xs text-red-400';
+                }
+            });
+        }
+
+        // ฟังก์ชันประมวลผลข้อมูลและพล็อตจุดบนแผนที่
+        function processData(data) {
+            markers.clearLayers();
+            let total = 0;
+            let male = 0;
+            let female = 0;
+
+            data.forEach(row => {
+                total++;
+                
+                // นับจำนวนเพศ
+                if(row['Sex'] === 'ชาย' || row['Sex'] === '1') male++;
+                else if(row['Sex'] === 'หญิง' || row['Sex'] === '2') female++;
+
+                // เช็คว่ามีพิกัดหรือไม่
+                const lat = parseFloat(row['Acc La'] || row['acc_lat']);
+                const lng = parseFloat(row['Acclong'] || row['acc_long']);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const marker = L.marker([lat, lng]);
+                    
+                    // สร้าง Popup แสดงรายละเอียด
+                    const popupContent = `
+                        <div class="text-sm">
+                            <strong class="text-red-400">ข้อมูลผู้เสียชีวิต</strong><br>
+                            เพศ: ${row['Sex'] || '-'} | อายุ: ${row['Age'] || '-'} ปี<br>
+                            พาหนะ: ${row['Vehicle'] || '-'}<br>
+                            จังหวัด: ${row['จ.ที่เสียชีวิต'] || '-'}<br>
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent);
+                    markers.addLayer(marker);
+                }
+            });
+
+            // อัปเดตตัวเลขสถิติบนหน้าเว็บ
+            document.getElementById('stat-total').innerText = total.toLocaleString();
+            document.getElementById('stat-male').innerText = male.toLocaleString();
+            document.getElementById('stat-female').innerText = female.toLocaleString();
+
+            // ปรับมุมมองแผนที่ให้ครอบคลุมจุดทั้งหมด
+            if (markers.getLayers().length > 0) {
+                map.fitBounds(markers.getBounds());
+            }
+        }
+
+        // เมื่อหน้าเว็บโหลดเสร็จ
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            fetchLiveData(); // ดึงข้อมูลทันที
+        });
+    </script>
+</body>
+</html>
